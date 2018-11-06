@@ -1,24 +1,52 @@
 package main
 
-//TODO: ADD Points and a server to upload high scores to
+//TODO: ADD a server to upload high scores to
 
 import (
 	"fmt"
 	"image"
 	"math/rand"
 	"os"
+	"io/ioutil"
 
 	_ "image/png"
 
 	"github.com/faiface/pixel"
 	"github.com/faiface/pixel/pixelgl"
 	"golang.org/x/image/colornames"
+	"github.com/faiface/pixel/text"
+	"github.com/golang/freetype/truetype"
+	"golang.org/x/image/font"
 )
 
 //constants
 const WINDOW_HEIGHT = 800
 const WINDOW_WIDTH = 1000
 const SPEED_LIMIT = 25
+const BRICK_VALUE = 100
+
+func loadFont(path string, size float64) (font.Face, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	bytes, err := ioutil.ReadAll(file)
+	if err != nil {
+		return nil, err
+	}
+
+	font, err := truetype.Parse(bytes)
+	if err != nil {
+		return nil, err
+	}
+
+	return truetype.NewFace(font, &truetype.Options{
+		Size:              size,
+		GlyphCacheEntries: 1,
+	}), nil
+}
 
 type brickMatrix struct {
 	rows [10][20]int
@@ -37,7 +65,7 @@ func loadPicture(path string) (pixel.Picture, error) {
 	return pixel.PictureDataFromImage(img), nil
 }
 
-func deflection(position, velocity, center pixel.Vec) (pixel.Vec, pixel.Vec) {
+func deflection(position, velocity, center pixel.Vec, score_multi int) (pixel.Vec, pixel.Vec, int) {
 	random := rand.Float64()
 	if random < -10 {
 		random = -10
@@ -49,6 +77,7 @@ func deflection(position, velocity, center pixel.Vec) (pixel.Vec, pixel.Vec) {
 		position.X = WINDOW_WIDTH - 1
 	}
 	if position.X < 0 {
+		score_multi = 0
 		velocity.X = velocity.X * -1.5
 		position.X = 1
 	}
@@ -66,7 +95,7 @@ func deflection(position, velocity, center pixel.Vec) (pixel.Vec, pixel.Vec) {
 	if velocity.Y > 7 {
 		velocity.Y = 7
 	}
-	return position, velocity
+	return position, velocity, score_multi
 
 }
 
@@ -75,10 +104,10 @@ func padDeflect(velocity pixel.Vec) pixel.Vec {
 	return velocity
 }
 
-func ballUpdate(position, velocity, center pixel.Vec) (pixel.Vec, pixel.Vec) {
+func ballUpdate(position, velocity, center pixel.Vec, score_multi int) (pixel.Vec, pixel.Vec, int) {
 	position = position.Add(velocity)
-	position, velocity = deflection(position, velocity, center)
-	return position, velocity
+	position, velocity, score_multi = deflection(position, velocity, center, score_multi)
+	return position, velocity, score_multi
 }
 
 func intcp(in []int) []int {
@@ -95,6 +124,18 @@ func rcp(in []pixel.Rect) []pixel.Rect {
 }
 
 func run() {
+	//points stuff
+	scorefont, err := loadFont("fonts/ARCADECLASSIC.TTF", 35)
+	if err != nil {
+		panic(err)
+	}
+	SCORE := 0
+	score_multi := 1
+	atlas := text.NewAtlas(scorefont, text.ASCII)
+	score_txt := text.New(pixel.V(0, 0), atlas)
+	score_txt.Color = colornames.Blue
+	fmt.Fprintln(score_txt, SCORE)
+
 	//these can probably be simplified
 	brkln := []int{1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1}
 	brk := [10][]int{intcp(brkln), intcp(brkln), intcp(brkln), intcp(brkln), intcp(brkln), intcp(brkln), intcp(brkln), intcp(brkln), intcp(brkln), intcp(brkln)}
@@ -138,6 +179,10 @@ func run() {
 
 	//Main loop
 	for !win.Closed() {
+		//update score text
+		score_txt.Clear()
+		fmt.Fprintln(score_txt, SCORE)
+
 		//get the paddle's position
 		win.Clear(colornames.Skyblue)
 		X := win.MousePosition().X
@@ -146,8 +191,12 @@ func run() {
 		pad_sprite.Draw(win, pixel.IM.Moved(paddleVector))
 
 		//get the ball's position
-		ballPosition, ballVector = ballUpdate(ballPosition, ballVector, win.Bounds().Center())
+		ballPosition, ballVector, score_multi = ballUpdate(ballPosition, ballVector, win.Bounds().Center(), score_multi)
 		ball_sprite.Draw(win, pixel.IM.Moved(ballPosition))
+		if score_multi == 0 {
+			SCORE = SCORE/2
+			score_multi = 1
+		}
 
 
 		//build the wall
@@ -164,17 +213,14 @@ func run() {
 				}
 			}
 		}
-		fmt.Println(locationVector)
-		fmt.Println(brickHitboxes)
 
 		//update hitboxes
 		padRect = pixel.R(paddleVector.X-50, paddleVector.Y-4, paddleVector.X+50, paddleVector.Y+4)
 		ballRect = pixel.R(ballPosition.X-4, ballPosition.Y-4, ballPosition.X+4, ballPosition.Y+4)
 
-		fmt.Println("BALL RECT -- ", ballRect)
-
 		//Check for paddle collision
 		if padRect.Intersect(ballRect) != pixel.R(0, 0, 0, 0) {
+			score_multi = 1
 			ballVector = padDeflect(ballVector)
 		}
 
@@ -183,9 +229,9 @@ func run() {
 			for x, _ := range q {
 				intersect := ballRect.Intersect(brickHitboxes[y][x])
 				if intersect != pixel.R(0, 0, 0, 0) {
-					fmt.Println("BRICK INTERSECT ", intersect)
+					score_multi += 1
+					SCORE += (score_multi * BRICK_VALUE)
 					if intersect.Min.X == ballRect.Min.X { // hit from the top or bottom
-						fmt.Println("top Hit")
 						ballVector.Y = (ballVector.Y * -2)
 						if ballVector.Y > 7 {
 							ballVector.Y = 7
@@ -197,7 +243,6 @@ func run() {
 						continue
 					}
 					if intersect.Min.Y == ballRect.Min.Y { // hit from the left or right
-						fmt.Println("bottom hit")
                                                 ballVector.X = (ballVector.X * -2)
 						if ballVector.X > 7 {
                                                         ballVector.X = 7
@@ -211,7 +256,8 @@ func run() {
 				}
 			}
 		}
-
+		//draw score text
+		score_txt.Draw(win, pixel.IM)
 		win.Update()
 	}
 }
