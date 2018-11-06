@@ -1,5 +1,7 @@
 package main
 
+//TODO: ADD Points and a server to upload high scores to
+
 import (
 	"fmt"
 	"image"
@@ -93,7 +95,7 @@ func rcp(in []pixel.Rect) []pixel.Rect {
 }
 
 func run() {
-	//brickshit
+	//these can probably be simplified
 	brkln := []int{1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1}
 	brk := [10][]int{intcp(brkln), intcp(brkln), intcp(brkln), intcp(brkln), intcp(brkln), intcp(brkln), intcp(brkln), intcp(brkln), intcp(brkln), intcp(brkln)}
 	br := pixel.R(0, 0, 0, 0)
@@ -101,7 +103,7 @@ func run() {
 	brickHitboxes := [10][]pixel.Rect{rcp(hbln), rcp(hbln), rcp(hbln), rcp(hbln), rcp(hbln), rcp(hbln), rcp(hbln), rcp(hbln), rcp(hbln), rcp(hbln)}
 
 	cfg := pixelgl.WindowConfig{
-		Title:  "TEST",
+		Title:  "Breakout 0.1",
 		Bounds: pixel.R(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT),
 		VSync:  true,
 	}
